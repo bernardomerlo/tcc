@@ -6,12 +6,12 @@ Este documento define as regras arquiteturais obrigatórias para o desenvolvimen
 
 A fim de padronizar e facilitar a configuração da conexão com o modelo de inteligência artificial local (Ollama), definimos a seguinte restrição de arquitetura:
 
-- **É ESTRITAMENTE PROIBIDO** instanciar as classes de conexão com o LLM (como `ChatOllama` da biblioteca `langchain_ollama` ou similares) diretamente nos scripts de regras de negócio, hooks ou agentes (arquivos na pasta `src/` ou na raiz).
-- **Regra de Ouro:** Toda e qualquer interação para criação do cliente de Inteligência Artificial deve ser feita **EXCLUSIVAMENTE** através da importação e uso da função `get_ollama_llm()` localizada no arquivo `src/llm_client.py`.
+- **É ESTRITAMENTE PROIBIDO** instanciar as classes de conexão com o LLM (como `ChatOllama` da biblioteca `langchain_ollama` ou similares) diretamente nos scripts de regras de negócio, hooks ou agentes (arquivos na pasta `doc_as_code/` ou na raiz).
+- **Regra de Ouro:** Toda e qualquer interação para criação do cliente de Inteligência Artificial deve ser feita **EXCLUSIVAMENTE** através da importação e uso da função `get_ollama_llm()` localizada no arquivo `doc_as_code/llm_client.py`.
 
 **Exceções Absolutas (Não marcar FAILED nestes casos):**
-1. O próprio arquivo `src/llm_client.py` tem **autorização exclusiva** para importar a biblioteca e instanciar `ChatOllama`.
-2. Modelos de Embeddings (como `OllamaEmbeddings`) **não** se enquadram nesta regra. Eles têm permissão total para serem importados e instanciados diretamente em arquivos de infraestrutura e pipelines (como `src/tools.py` ou `src/ingestion_pipeline.py`).
+1. O próprio arquivo `doc_as_code/llm_client.py` tem **autorização exclusiva** para importar a biblioteca e instanciar `ChatOllama`.
+2. Modelos de Embeddings (como `OllamaEmbeddings`) **não** se enquadram nesta regra. Eles têm permissão total para serem importados e instanciados diretamente em arquivos de infraestrutura e pipelines (como `doc_as_code/tools.py` ou `doc_as_code/ingestion_pipeline.py`).
 
 ## 2. Padrão de Nomenclatura
 

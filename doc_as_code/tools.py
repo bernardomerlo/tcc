@@ -109,20 +109,3 @@ def ler_arquivo(caminho_arquivo: str) -> str:
         return f"Erro: Permissão negada ao tentar ler '{caminho_arquivo}'."
     except Exception as e:
         return f"Erro inesperado ao ler o arquivo '{caminho_arquivo}': {e}"
-
-if __name__ == "__main__":
-    # Script de teste rápido (Standalone)
-    print("="*40)
-    print("Testando leitura de arquivo:")
-    # Assume que o requirements.txt está na raiz (um nível acima de src)
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    req_file = os.path.join(project_root, "requirements.txt")
-    print(ler_arquivo(req_file)[:100] + "...\n")
-    
-    print("="*40)
-    print("Testando git local (status):")
-    print(executar_git_local("status", repo_path=project_root))
-    
-    print("="*40)
-    print("Testando busca RAG (Pode retornar erro se db não existir):")
-    print(buscar_rag_vetorial("Como funciona o sistema?"))

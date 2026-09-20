@@ -29,7 +29,6 @@ if __name__ == "__main__":
     # Teste rápido de configuração do cliente
     print("Inicializando o cliente Ollama local...")
     try:
-        # Usa 'llama3' como padrão, mas pode ser 'mistral' se você preferir
         llm = get_ollama_llm(model_name="llama3")
         print(f"Cliente inicializado com sucesso usando o modelo: {llm.model}")
         print(f"Conectado à URL: {llm.base_url}")
