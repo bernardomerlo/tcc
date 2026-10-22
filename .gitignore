@@ -2,8 +2,9 @@ data/
 venv/
 __pycache__/
 *.pyc
-.chroma_db/
 .env
 *.egg-info/
 build/
 dist/
+*.log
+actions-runner/
