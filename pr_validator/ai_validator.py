@@ -33,8 +33,12 @@ def _normalize(text: str) -> str:
 
 
 def _has_evidence(item: str, evidence: str) -> bool:
-    """O item só vale se citar entre aspas um trecho que realmente existe na documentação/diff enviados."""
-    return any(_normalize(quote) in evidence for quote in _QUOTE.findall(item))
+    """O item só vale se citar entre aspas um trecho que realmente existe na documentação/linhas novas enviadas."""
+    for quote in _QUOTE.findall(item):
+        without_diff_markers = re.sub(r"(?m)^\+", "", quote)  # o modelo pode copiar o '+' do diff
+        if _normalize(quote) in evidence or _normalize(without_diff_markers) in evidence:
+            return True
+    return False
 
 
 class AiValidationError(RuntimeError):
@@ -123,7 +127,7 @@ def validate_with_ai(settings: Settings, bundle: PromptBundle, attempts: int = 2
                 "truncado a documentação. Aumente PR_NUM_CTX (e a janela do modelo) ou reduza a documentação."
             )
         try:
-            return AiResult(parse_verdict(body.get("response", ""), evidence_text=bundle.prompt), prompt_tokens)
+            return AiResult(parse_verdict(body.get("response", ""), evidence_text=bundle.evidence), prompt_tokens)
         except AiValidationError as exc:
             last_error = exc
     raise last_error
