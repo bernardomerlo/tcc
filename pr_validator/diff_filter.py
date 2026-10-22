@@ -23,10 +23,18 @@ class SkippedFile:
 class FilteredDiff:
     blocks: List[DiffBlock] = field(default_factory=list)
     skipped: List[SkippedFile] = field(default_factory=list)
+    removed: List[str] = field(default_factory=list)  # arquivos deletados no PR (conteúdo não é enviado à IA)
 
     @property
     def text(self) -> str:
         return "".join(block.text for block in self.blocks)
+
+
+def added_lines(diff_text: str) -> str:
+    """Somente as linhas adicionadas (sem o marcador '+'): é o código/doc que passa a existir após o PR."""
+    return "\n".join(
+        line[1:] for line in diff_text.splitlines() if line.startswith("+") and not line.startswith("+++")
+    )
 
 
 def split_diff(raw_diff: str) -> List[DiffBlock]:
@@ -72,6 +80,9 @@ def filter_diff(raw_diff: str, ignore_patterns: Sequence[str]) -> FilteredDiff:
             result.skipped.append(SkippedFile(block.path, "arquivo binário"))
         elif _matches_any(block.path, ignore_patterns):
             result.skipped.append(SkippedFile(block.path, "arquivo gerado/lockfile/mídia"))
+        elif "\ndeleted file mode " in block.text:
+            # Código apagado não pode violar a documentação: a IA só precisa saber que o arquivo deixou de existir.
+            result.removed.append(block.path)
         else:
             result.blocks.append(block)
     return result

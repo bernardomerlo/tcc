@@ -148,7 +148,8 @@ function renderBody(review, full, container) {
     container.append(issueList("Código não acompanhou a doc (missingCodeUpdates)", verdict.missingCodeUpdates));
     container.append(issueList("Inconsistências", verdict.inconsistencies));
     const info = `Modelo ${meta.model} · ~${meta.promptTokens} tokens de ${meta.numCtx} · docs: ${(meta.docFiles || []).join(", ") || "nenhum"}`
-      + ((meta.skippedFiles || []).length ? ` · ignorados: ${meta.skippedFiles.map(f => f.path).join(", ")}` : "");
+      + ((meta.skippedFiles || []).length ? ` · ignorados: ${meta.skippedFiles.map(f => f.path).join(", ")}` : "")
+      + ((meta.removedFiles || []).length ? ` · removidos no PR: ${meta.removedFiles.join(", ")}` : "");
     container.append(el("div", { class: "meta", text: info }));
   }
 
