@@ -104,6 +104,11 @@ class ReviewWorker:
         if not docs:
             warnings.append("Nenhum arquivo de documentação foi encontrado; o veredito é pouco confiável.")
         verdict = dict(result.verdict)
+        discarded = verdict.pop("discardedClaims", 0)
+        if discarded:
+            warnings.append(
+                f"{discarded} apontamento(s) da IA descartado(s) por não citarem trecho literal da documentação."
+            )
         verdict["meta"] = {
             "model": self.settings.model_name,
             "numCtx": self.settings.num_ctx,

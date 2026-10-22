@@ -121,6 +121,28 @@ class VerdictTests(unittest.TestCase):
         with self.assertRaises(AiValidationError):
             parse_verdict("not json")
 
+    def test_claims_without_literal_quote_are_discarded(self):
+        # Caso real: o modelo listou só nomes de arquivo e declarou o PR inconsistente.
+        raw = json.dumps({"isValid": False, "summary": "?", "missingDocUpdates": ["pr_validator/app.py"]})
+        verdict = parse_verdict(raw, evidence_text="O servidor escuta na porta 5000.")
+        self.assertEqual(verdict["missingDocUpdates"], [])
+        self.assertEqual(verdict["discardedClaims"], 1)
+        self.assertTrue(verdict["isValid"])
+
+    def test_claim_with_real_quote_is_kept_even_if_wrapped_in_quotes(self):
+        doc = "O servidor escuta na  porta 5000\nsempre."
+        item = '"app.py: usa 8080 | trecho: "O servidor escuta na porta 5000""'
+        verdict = parse_verdict(json.dumps({"isValid": False, "summary": "s", "inconsistencies": [item]}), doc)
+        self.assertEqual(verdict["inconsistencies"], [item])
+        self.assertFalse(verdict["isValid"])
+
+    def test_invented_quote_is_discarded(self):
+        item = 'app.py | trecho: "o servidor usa a porta 9999"'
+        verdict = parse_verdict(json.dumps({"isValid": False, "summary": "s", "inconsistencies": [item]}),
+                                "O servidor escuta na porta 5000.")
+        self.assertEqual(verdict["inconsistencies"], [])
+        self.assertEqual(verdict["discardedClaims"], 1)
+
 
 class WorkerAndApiTests(unittest.TestCase):
     def setUp(self):

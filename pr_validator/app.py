@@ -124,7 +124,7 @@ def create_app(
     @app.post("/api/reviews/<int:review_id>/retry")
     def retry(review_id: int):
         if not repository.requeue(review_id):
-            return _fail("Só é possível reprocessar revisões em ERROR.", 409)
+            return _fail("Só é possível reprocessar revisões em ERROR ou aguardando decisão.", 409)
         worker.enqueue(review_id)
         return jsonify({"id": review_id, "status": database.PENDING}), 202
 

@@ -174,11 +174,9 @@ function renderBody(review, full, container) {
     approve.addEventListener("click", () => act(review, "approve", approve, message));
     reject.addEventListener("click", () => act(review, "reject", reject, message));
     const actions = el("div", { class: "actions" }, approve, reject);
-    if (full.status === "ERROR") {
-      const retry = el("button", { class: "retry", text: "Reprocessar" });
-      retry.addEventListener("click", () => act(review, "retry", retry, message));
-      actions.append(retry);
-    }
+    const retry = el("button", { class: "retry", text: "Reprocessar" });
+    retry.addEventListener("click", () => act(review, "retry", retry, message));
+    actions.append(retry);
     container.append(actions, message);
   }
 }

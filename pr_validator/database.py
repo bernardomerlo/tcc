@@ -151,11 +151,11 @@ class ReviewRepository:
             )
 
     def requeue(self, review_id: int) -> bool:
-        """Recoloca um registro em ERROR na fila."""
+        """Recoloca na fila um registro em ERROR ou aguardando decisão (revalidar com o mesmo commit)."""
         with self._connect() as conn:
             cursor = conn.execute(
                 "UPDATE PullRequestReviews SET Status = ?, ErrorMessage = NULL, UpdatedAt = ? "
-                "WHERE Id = ? AND Status = ?",
-                (PENDING, _now(), review_id, ERROR),
+                "WHERE Id = ? AND Status IN (?, ?)",
+                (PENDING, _now(), review_id, ERROR, WAITING_APPROVAL),
             )
             return cursor.rowcount == 1
