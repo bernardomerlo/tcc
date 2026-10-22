@@ -1,0 +1,45 @@
+name: Gatilho de Validação Local de PR
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened]
+
+# O token do workflow não precisa de nenhuma permissão: o job só avisa o servidor local.
+permissions: {}
+
+jobs:
+  acionar-validador:
+    runs-on: self-hosted
+    timeout-minutes: 5
+    # Trava de segurança: nunca executa código/dados de forks na máquina do chefe.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Notificar servidor web local
+        uses: actions/github-script@v7
+        env:
+          VALIDATOR_URL: http://localhost:5000/api/webhook/pr
+          VALIDATOR_SECRET: ${{ secrets.PR_VALIDATOR_WEBHOOK_SECRET }}
+        with:
+          # Título/autor/branch são controlados pelo autor do PR: são lidos do payload via JS
+          # (e não interpolados em shell/JSON), evitando injeção de comando e JSON quebrado.
+          script: |
+            const pr = context.payload.pull_request;
+            const response = await fetch(process.env.VALIDATOR_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Webhook-Secret": process.env.VALIDATOR_SECRET || "",
+              },
+              body: JSON.stringify({
+                repo: context.repo.owner + "/" + context.repo.repo,
+                prNumber: pr.number,
+                title: pr.title,
+                author: pr.user.login,
+                headBranch: pr.head.ref,
+                commitSha: pr.head.sha,
+              }),
+            });
+            if (response.status !== 202) {
+              core.setFailed(`Servidor local respondeu ${response.status}: ${await response.text()}`);
+            }

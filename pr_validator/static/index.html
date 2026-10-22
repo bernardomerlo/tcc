@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Validador de PRs · Código vs. Documentação</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #fff; --border: #dfe1e6; --text: #172b4d; --muted: #6b778c;
+    --green: #1f8a4c; --green-bg: #e3f6ea; --red: #c9372c; --red-bg: #fde8e6;
+    --blue: #0b5cad; --blue-bg: #e4f0fb; --amber: #8a5a00; --amber-bg: #fff3d6; --gray-bg: #ebecf0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, "Segoe UI", sans-serif; }
+  header { background: #172b4d; color: #fff; padding: 16px 24px; display: flex; align-items: baseline; gap: 16px; }
+  header h1 { margin: 0; font-size: 18px; }
+  header span { color: #b3bac5; font-size: 13px; }
+  main { max-width: 960px; margin: 24px auto; padding: 0 16px; display: grid; gap: 12px; }
+  .empty { text-align: center; color: var(--muted); padding: 48px 0; }
+  details.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+  details.card > summary { list-style: none; cursor: pointer; padding: 14px 16px; display: grid; gap: 4px; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .title { font-weight: 600; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+  .b-ok { background: var(--green-bg); color: var(--green); }
+  .b-bad { background: var(--red-bg); color: var(--red); }
+  .b-wait { background: var(--blue-bg); color: var(--blue); }
+  .b-warn { background: var(--amber-bg); color: var(--amber); }
+  .b-neutral { background: var(--gray-bg); color: var(--muted); }
+  .body { border-top: 1px solid var(--border); padding: 16px; display: grid; gap: 14px; }
+  .body h3 { margin: 0 0 4px; font-size: 14px; }
+  .body ul { margin: 0; padding-left: 20px; }
+  .none { color: var(--muted); font-style: italic; }
+  .banner { padding: 8px 12px; border-radius: 6px; background: var(--amber-bg); color: var(--amber); font-size: 13px; }
+  .banner.err { background: var(--red-bg); color: var(--red); white-space: pre-wrap; }
+  textarea { width: 100%; min-height: 130px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font: inherit; resize: vertical; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { border: 0; border-radius: 6px; padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; color: #fff; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .approve { background: var(--green); } .reject { background: var(--red); } .retry { background: var(--blue); }
+  pre.diff { margin: 8px 0 0; max-height: 420px; overflow: auto; background: #0d1117; color: #c9d1d9; padding: 12px; border-radius: 6px; font-size: 12px; }
+  .diff .add { color: #3fb950; } .diff .del { color: #f85149; } .diff .hunk { color: #79c0ff; }
+  .msg { font-size: 13px; color: var(--red); }
+</style>
+</head>
+<body>
+<header><h1>Validador de PRs</h1><span>Código vs. documentação · IA local</span></header>
+<main id="list"><div class="empty">Carregando…</div></main>
+
+<script>
+const STATUS_LABEL = { PENDING: "Na fila", PROCESSING: "IA processando", WAITING_APPROVAL: "Aguardando decisão",
+                       APPROVED: "Aprovado", REJECTED: "Mudanças solicitadas", ERROR: "Erro" };
+const drafts = new Map();     // id -> texto digitado na caixa de comentário
+const openIds = new Set();    // cards abertos
+let lastSignature = "";
+
+// Todo conteúdo vindo do PR/IA é inserido com textContent: nunca como HTML.
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node[key] = value;
+  }
+  for (const child of children) if (child) node.append(child);
+  return node;
+}
+
+async function api(path, options = {}) {
+  const init = { method: options.method || "GET" };
+  if (init.method === "POST") {
+    init.headers = { "Content-Type": "application/json" };
+    init.body = JSON.stringify(options.body || {});
+  }
+  const response = await fetch(path, init);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+
+function badge(review) {
+  const verdict = review.aiVerdict;
+  switch (review.status) {
+    case "PENDING": case "PROCESSING": return el("span", { class: "badge b-wait", text: STATUS_LABEL[review.status] });
+    case "WAITING_APPROVAL":
+      return verdict && verdict.isValid
+        ? el("span", { class: "badge b-ok", text: "Válido" })
+        : el("span", { class: "badge b-bad", text: "Inconsistente" });
+    case "APPROVED": return el("span", { class: "badge b-ok", text: "Aprovado" });
+    case "REJECTED": return el("span", { class: "badge b-warn", text: "Mudanças solicitadas" });
+    default: return el("span", { class: "badge b-bad", text: "Erro" });
+  }
+}
+
+function issueList(title, items) {
+  return el("div", {}, el("h3", { text: title }),
+    items && items.length
+      ? el("ul", {}, ...items.map(text => el("li", { text })))
+      : el("div", { class: "none", text: "Nenhum apontamento." }));
+}
+
+function defaultComment(review) {
+  const v = review.aiVerdict;
+  if (!v || v.isValid) return "✅ Validado com a documentação e aprovado.";
+  const section = (title, items) => items.length ? `${title}:\n${items.map(i => `- ${i}`).join("\n")}\n\n` : "";
+  return `Apontamentos da validação código × documentação\n\n${v.summary}\n\n`
+    + section("Documentação não atualizada", v.missingDocUpdates)
+    + section("Código não acompanhou a documentação", v.missingCodeUpdates)
+    + section("Inconsistências", v.inconsistencies);
+}
+
+function colorizeDiff(text) {
+  const pre = el("pre", { class: "diff" });
+  for (const line of text.split("\n")) {
+    const cls = line.startsWith("@@") ? "hunk" : line.startsWith("+") && !line.startsWith("+++") ? "add"
+              : line.startsWith("-") && !line.startsWith("---") ? "del" : "";
+    pre.append(el("span", { class: cls, text: line + "\n" }));
+  }
+  return pre;
+}
+
+async function act(review, action, button, message) {
+  const comment = document.getElementById(`comment-${review.id}`).value;
+  button.disabled = true; message.textContent = "";
+  try {
+    await api(`/api/reviews/${review.id}/${action}`, { method: "POST", body: { comment } });
+    drafts.delete(review.id);
+    await refresh(true);
+  } catch (error) {
+    message.textContent = error.message; button.disabled = false;
+  }
+}
+
+function renderBody(review, full, container) {
+  container.replaceChildren();
+  const verdict = full.aiVerdict;
+  const meta = (verdict && verdict.meta) || {};
+
+  if (full.errorMessage) container.append(el("div", { class: "banner err", text: full.errorMessage }));
+  for (const warning of meta.warnings || []) container.append(el("div", { class: "banner", text: warning }));
+
+  if (verdict) {
+    container.append(el("div", {}, el("h3", { text: "Resumo da IA" }), el("div", { text: verdict.summary || "—" })));
+    container.append(issueList("Documentação não atualizada (missingDocUpdates)", verdict.missingDocUpdates));
+    container.append(issueList("Código não acompanhou a doc (missingCodeUpdates)", verdict.missingCodeUpdates));
+    container.append(issueList("Inconsistências", verdict.inconsistencies));
+    const info = `Modelo ${meta.model} · ~${meta.promptTokens} tokens de ${meta.numCtx} · docs: ${(meta.docFiles || []).join(", ") || "nenhum"}`
+      + ((meta.skippedFiles || []).length ? ` · ignorados: ${meta.skippedFiles.map(f => f.path).join(", ")}` : "");
+    container.append(el("div", { class: "meta", text: info }));
+  }
+
+  if (full.diffContent) {
+    const accordion = el("details", {}, el("summary", { text: "Ver diff bruto (filtrado)" }));
+    accordion.addEventListener("toggle", () => {
+      if (accordion.open && accordion.children.length === 1) accordion.append(colorizeDiff(full.diffContent));
+    });
+    container.append(accordion);
+  }
+
+  const decidable = ["WAITING_APPROVAL", "ERROR"].includes(full.status);
+  if (decidable || full.decisionComment) {
+    const textarea = el("textarea", { id: `comment-${review.id}`, disabled: !decidable });
+    textarea.value = drafts.get(review.id) ?? full.decisionComment ?? defaultComment(full);
+    textarea.addEventListener("input", () => drafts.set(review.id, textarea.value));
+    container.append(el("div", {}, el("h3", { text: "Comentário da revisão" }), textarea));
+  }
+  if (decidable) {
+    const message = el("span", { class: "msg" });
+    const approve = el("button", { class: "approve", text: "Aprovar PR" });
+    const reject = el("button", { class: "reject", text: "Reprovar / Pedir ajuste" });
+    approve.addEventListener("click", () => act(review, "approve", approve, message));
+    reject.addEventListener("click", () => act(review, "reject", reject, message));
+    const actions = el("div", { class: "actions" }, approve, reject);
+    if (full.status === "ERROR") {
+      const retry = el("button", { class: "retry", text: "Reprocessar" });
+      retry.addEventListener("click", () => act(review, "retry", retry, message));
+      actions.append(retry);
+    }
+    container.append(actions, message);
+  }
+}
+
+function renderCard(review) {
+  const card = el("details", { class: "card" });
+  card.open = openIds.has(review.id);
+  const container = el("div", { class: "body" });
+  const loaded = async () => renderBody(review, await api(`/api/reviews/${review.id}`), container);
+  card.addEventListener("toggle", () => {
+    if (card.open) { openIds.add(review.id); loaded(); } else openIds.delete(review.id);
+  });
+  card.append(
+    el("summary", {},
+      el("div", { class: "row" }, el("span", { class: "title", text: `#${review.prNumber} ${review.title}` }), badge(review)),
+      el("div", { class: "meta", text: `${review.repo} · ${review.author} · ${review.headBranch} · ${review.commitSha.slice(0, 7)} · ${new Date(review.updatedAt).toLocaleString()}` })),
+    container);
+  if (card.open) loaded();
+  return card;
+}
+
+async function refresh(force = false) {
+  const reviews = await api("/api/reviews");
+  const signature = JSON.stringify(reviews.map(r => [r.id, r.status, r.updatedAt]));
+  if (!force && signature === lastSignature) return;
+  lastSignature = signature;
+  const list = document.getElementById("list");
+  list.replaceChildren(...(reviews.length ? reviews.map(renderCard)
+    : [el("div", { class: "empty", text: "Nenhum PR recebido ainda." })]));
+}
+
+refresh().catch(console.error);
+setInterval(() => refresh().catch(console.error), 4000);
+</script>
+</body>
+</html>
+
