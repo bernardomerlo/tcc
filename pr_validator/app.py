@@ -103,6 +103,12 @@ def create_app(
                 github.request_changes(row["Repo"], row["PrNumber"], comment)
                 new_status = database.REJECTED
         except GitHubCliError as exc:
+            if "own pull request" in str(exc).lower():
+                return _fail(
+                    "O GitHub não permite que o autor aprove ou peça mudanças no próprio PR. "
+                    "O PR precisa ser aberto por outra conta que não seja a autenticada no `gh`.",
+                    409,
+                )
             return _fail(str(exc), 502)
         repository.save_decision(review_id, new_status, comment)
         return jsonify({"id": review_id, "status": new_status})

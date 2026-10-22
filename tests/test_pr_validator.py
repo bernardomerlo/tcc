@@ -217,6 +217,17 @@ class WorkerAndApiTests(unittest.TestCase):
         self.assertEqual(self.repo.get(review_id)["Status"], database.WAITING_APPROVAL)
 
 
+    def test_own_pr_gets_friendly_error(self):
+        review_id = self.post_pr().json["id"]
+        self.worker.process(review_id)
+        self.github.approve = lambda *a: (_ for _ in ()).throw(
+            GitHubCliError("gh pr review falhou: GraphQL: Review Can not approve your own pull request"))
+        response = self.client.post(f"/api/reviews/{review_id}/approve", json={})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("próprio PR", response.json["error"])
+        self.assertEqual(self.repo.get(review_id)["Status"], database.WAITING_APPROVAL)
+
+
 if __name__ == "__main__":
     unittest.main()
 
