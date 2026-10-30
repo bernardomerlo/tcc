@@ -91,6 +91,7 @@ class ReviewWorker:
             docs=docs,
             diff_blocks=filtered.blocks,
             skipped=filtered.skipped,
+            removed=filtered.removed,
             num_ctx=self.settings.num_ctx,
             output_reserve=self.settings.output_reserve_tokens,
         )
@@ -115,6 +116,7 @@ class ReviewWorker:
             "promptTokens": result.prompt_tokens or bundle.estimated_tokens,
             "docFiles": bundle.doc_paths,
             "skippedFiles": [{"path": s.path, "reason": s.reason} for s in filtered.skipped],
+            "removedFiles": filtered.removed,
             "warnings": warnings,
         }
         return filtered.text, json.dumps(verdict, ensure_ascii=False)

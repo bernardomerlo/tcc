@@ -96,6 +96,38 @@ class DiffFilterTests(unittest.TestCase):
 
 
 class PromptTests(unittest.TestCase):
+    def test_deleted_files_are_not_sent_and_removed_lines_are_not_evidence(self):
+        # Caso real (PR #1): o PR apaga um arquivo que violava a doc antiga; a IA acusou o código apagado.
+        diff = (
+            "diff --git a/examples/old.py b/examples/old.py\n"
+            "deleted file mode 100644\n--- a/examples/old.py\n+++ /dev/null\n@@ -1 +0,0 @@\n"
+            "-modelo_ai = ChatOllama(model='llama3.1')\n"
+            "diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n@@ -1 +1 @@\n"
+            "-antigo = ChatOllama(model='x')\n+novo = get_ollama_llm()\n"
+        )
+        filtered = filter_diff(diff, ())
+        self.assertEqual(filtered.removed, ["examples/old.py"])
+        self.assertEqual([b.path for b in filtered.blocks], ["app.py"])
+
+        docs = [DocFile("docs/a.md", "regra de arquitetura", "base")]
+        bundle = build_prompt("t", "", docs, filtered.blocks, [], 32768, 2048, removed=filtered.removed)
+        self.assertIn("ARQUIVOS REMOVIDOS", bundle.prompt)
+        self.assertNotIn("modelo_ai", bundle.prompt)
+        self.assertIn("novo = get_ollama_llm()", bundle.evidence)
+        self.assertNotIn("antigo = ChatOllama", bundle.evidence)  # linha '-' não vale como evidência
+
+        item = 'app.py viola | trecho: "antigo = ChatOllama(model=\'x\')"'
+        verdict = parse_verdict(json.dumps({"isValid": False, "summary": "s", "inconsistencies": [item]}),
+                                bundle.evidence)
+        self.assertEqual(verdict["inconsistencies"], [])
+        self.assertTrue(verdict["isValid"])
+
+    def test_quote_copied_with_diff_marker_still_matches_added_line(self):
+        item = 'x | trecho: "+novo = get_ollama_llm()"'
+        verdict = parse_verdict(json.dumps({"isValid": False, "summary": "s", "inconsistencies": [item]}),
+                                "novo = get_ollama_llm()")
+        self.assertEqual(len(verdict["inconsistencies"]), 1)
+
     def test_truncates_diff_explicitly(self):
         blocks = filter_diff(SAMPLE_DIFF, ()).blocks
         big = blocks[0].__class__("big.py", "+" + "x" * 30000 + "\n")
